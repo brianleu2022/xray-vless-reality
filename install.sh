@@ -44,7 +44,7 @@ for i in "${InFaces[@]}"; do  # 从网口循环获取IP
     if [[ -n "$Public_IPv4" ]]; then  # 检查是否获取到IP地址
         IPv4="$Public_IPv4"
     fi
-    if [[ -n "$Public_IPv6" ]]; then  # 检查是否获取到IP地址            
+    if [[ -n "$Public_IPv6" ]]; then  # 检查是否获取到IP地址
         IPv6="$Public_IPv6"
     fi
 done
@@ -56,8 +56,72 @@ default_uuid=$(curl -sL https://www.uuidtools.com/api/generate/v3/namespace/ns:d
 # 如果你想使用纯随机的UUID
 # default_uuid=$(cat /proc/sys/kernel/random/uuid)
 
-# 执行脚本带参数
-if [ $# -ge 1 ]; then
+# ----------------------------------------------------------------
+# 检测是否定义了任意一个环境变量
+# 若定义了至少一个, 则忽略命令行参数, 完全以环境变量为准
+# ----------------------------------------------------------------
+_use_env_vars=0
+if [[ -n "${_MYIP_}" || -n "${_MYPORT_}" || -n "${_MYDOMAIN_}" || -n "${_MYUUID_}" ]]; then
+    _use_env_vars=1
+fi
+
+if [[ $_use_env_vars -eq 1 ]]; then
+    # ---- 环境变量模式 ----
+    echo -e "$cyan[环境变量模式] 检测到环境变量, 忽略命令行参数.$none"
+    echo "----------------------------------------------------------------"
+
+    # _MYIP_: 根据IP判断 netstack, 并设置 ip
+    if [[ -n "${_MYIP_}" ]]; then
+        ip="${_MYIP_}"
+        # 简单判断是否含有 ":" 来区分 IPv6 / IPv4
+        if [[ "${ip}" == *:* ]]; then
+            netstack=6
+        else
+            netstack=4
+        fi
+    else
+        # 未定义 _MYIP_, 沿用自动探测逻辑
+        if [[ -n "$IPv4" ]]; then
+            netstack=4
+            ip=${IPv4}
+        elif [[ -n "$IPv6" ]]; then
+            netstack=6
+            ip=${IPv6}
+        else
+            warn "没有获取到公共IP"
+        fi
+    fi
+
+    # _MYPORT_: 端口, 默认 443
+    if [[ -n "${_MYPORT_}" ]]; then
+        port="${_MYPORT_}"
+    else
+        port=443
+    fi
+
+    # _MYDOMAIN_: 域名, 默认 learn.microsoft.com
+    if [[ -n "${_MYDOMAIN_}" ]]; then
+        domain="${_MYDOMAIN_}"
+    else
+        domain="learn.microsoft.com"
+    fi
+
+    # _MYUUID_: UUID, 默认使用种子生成的 UUID
+    if [[ -n "${_MYUUID_}" ]]; then
+        uuid="${_MYUUID_}"
+    else
+        uuid="${default_uuid}"
+    fi
+
+    echo -e "$yellow netstack  = ${cyan}${netstack}${none}"
+    echo -e "$yellow 本机IP    = ${cyan}${ip}${none}"
+    echo -e "$yellow 端口 (Port)= ${cyan}${port}${none}"
+    echo -e "$yellow 用户ID (User ID / UUID) = $cyan${uuid}${none}"
+    echo -e "$yellow SNI       = ${cyan}${domain}${none}"
+    echo "----------------------------------------------------------------"
+
+elif [ $# -ge 1 ]; then
+    # ---- 命令行参数模式 ----
     # 第1个参数是搭在ipv4还是ipv6上
     case ${1} in
     4)
@@ -72,7 +136,7 @@ if [ $# -ge 1 ]; then
         if [[ -n "$IPv4" ]]; then  # 检查是否获取到IP地址
             netstack=4
             ip=${IPv4}
-        elif [[ -n "$IPv6" ]]; then  # 检查是否获取到IP地址            
+        elif [[ -n "$IPv6" ]]; then  # 检查是否获取到IP地址
             netstack=6
             ip=${IPv6}
         else
@@ -103,7 +167,7 @@ if [ $# -ge 1 ]; then
     echo -e "$yellow 本机IP = ${cyan}${ip}${none}"
     echo -e "$yellow 端口 (Port) = ${cyan}${port}${none}"
     echo -e "$yellow 用户ID (User ID / UUID) = $cyan${uuid}${none}"
-    echo -e "$yellow SNI = ${cyan}$domain${none}"
+    echo -e "$yellow SNI = ${cyan}${domain}${none}"
     echo "----------------------------------------------------------------"
 fi
 
@@ -139,7 +203,7 @@ if [[ -n $uuid ]]; then
 
   # ShortID
   shortid=$(echo -n ${uuid} | sha1sum | head -c 16)
-  
+
   echo
   echo "私钥公钥要在安装xray之后才可以生成"
   echo -e "$yellow 私钥 (PrivateKey) = ${cyan}${private_key}${none}"
@@ -252,10 +316,10 @@ if [[ -z $private_key ]]; then
   tmp_key=$(echo -n ${reality_key_seed} | xargs xray x25519 -i)
   default_private_key=$(echo ${tmp_key} | awk '{print $2}')
   default_public_key=$(echo ${tmp_key} | awk '{print $4}')
-  
+
   echo -e "请输入 "$yellow"x25519 Private Key"$none" x25519私钥 :"
   read -p "$(echo -e "(默认私钥 Private Key: ${cyan}${default_private_key}$none):")" private_key
-  if [[ -z "$private_key" ]]; then 
+  if [[ -z "$private_key" ]]; then
     private_key=$default_private_key
     public_key=$default_public_key
   else
@@ -265,7 +329,7 @@ if [[ -z $private_key ]]; then
   fi
 
   echo
-  echo 
+  echo
   echo -e "$yellow 私钥 (PrivateKey) = ${cyan}${private_key}$none"
   echo -e "$yellow 公钥 (PublicKey) = ${cyan}${public_key}$none"
   echo "----------------------------------------------------------------"
@@ -519,7 +583,7 @@ elif  [[ $netstack == "4" ]]; then
     echo -e "有些热门小鸡用原生的IPv4出站访问Google需要通过人机验证, 可以通过修改config.json指定google流量走WARP的IPv6出站解决"
     echo -e "群组: ${cyan} https://t.me/+q5WPfGjtwukyZjhl ${none}"
     echo -e "教程: ${cyan} https://zelikk.blogspot.com/2022/03/racknerd-v2ray-cloudflare-warp--ipv6-google-domainstrategy-outboundtag-routing.html ${none}"
-    echo -e "视频: ${cyan} https://youtu.be/Yvvm4IlouEk ${none}"    
+    echo -e "视频: ${cyan} https://youtu.be/Yvvm4IlouEk ${none}"
     echo "----------------------------------------------------------------"
     pause
 
